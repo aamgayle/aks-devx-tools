@@ -27,12 +27,14 @@ import {getBranches} from '../../utils/gitExtension';
 import {Branch, Ref} from '../../utils/git';
 import path = require('path');
 import {getAsyncOptions} from '../../utils/quickPick';
+import {CompletedSteps} from './model/guidedExperience';
 import {PromptResourceGroup} from './helper/commonPrompts';
 
 const title = 'Draft a GitHub Actions Workflow';
 
 interface PromptContext {
    destination: vscode.Uri;
+   manifestFile: vscode.Uri;
    clusterSubscription: SubscriptionItem;
    clusterResourceGroup: ResourceGroupItem;
    cluster: ManagedClusterItem;
@@ -48,10 +50,9 @@ type WizardContext = IActionContext & Partial<PromptContext>;
 type IPromptStep = AzureWizardPromptStep<WizardContext>;
 type IExecuteStep = AzureWizardExecuteStep<WizardContext>;
 
-export async function runDraftWorkflow({
-   actionContext,
-   extensionContext
-}: Context) {
+export async function runDraftWorkflow(
+   {actionContext,extensionContext,}: Context, 
+   completedSteps: CompletedSteps) {
    const az: AzApi = new Az(getAzCreds);
 
    // Ensure Draft Binary
@@ -91,7 +92,8 @@ export async function runDraftWorkflow({
       new PromptACRSelection(az),
       new PromptACRRegistrySelection(az),
       new PromptNewRepository(),
-      new PromptGitHubBranchSelection()
+      new PromptGitHubBranchSelection(),     
+      new PromptManifestFile(completedSteps),
    ];
    const executeSteps: IExecuteStep[] = [
       new ExecuteDraftWorkflow(),
@@ -126,6 +128,32 @@ export async function runDraftWorkflow({
             );
          }
       });
+}
+
+
+class PromptManifestFile extends AzureWizardPromptStep<WizardContext> {
+   constructor(private completedSteps: CompletedSteps) {
+      super();
+   }
+   public async prompt(wizardContext: WizardContext): Promise<void> {
+      const manifestFile = (
+         await wizardContext.ui.showOpenDialog({
+            canSelectFiles: false,
+            canSelectFolders: true,
+            canSelectMany: false,
+            stepName: 'Manifest File',
+            openLabel: 'Choose Manifest File',
+            title: 'Choose Manifest File',
+            defaultUri: wizardContext.manifestFile
+         })
+      )[0];
+      
+      wizardContext.manifestFile = manifestFile;
+   }
+
+   public shouldPrompt(wizardContext: WizardContext): boolean {
+      return !this.completedSteps.draftDeployment;
+   }
 }
 
 class PromptAKSClusterSelection extends AzureWizardPromptStep<WizardContext> {
