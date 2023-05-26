@@ -29,12 +29,14 @@ import path = require('path');
 import {getAsyncOptions} from '../../utils/quickPick';
 import {CompletedSteps} from './model/guidedExperience';
 import {PromptResourceGroup} from './helper/commonPrompts';
+import { StateApi, State } from '../../utils/state';
 
 const title = 'Draft a GitHub Actions Workflow';
 
 interface PromptContext {
    destination: vscode.Uri;
-   manifestFile: vscode.Uri;
+   manifestPath: vscode.Uri;
+   manifestFormat: string;
    clusterSubscription: SubscriptionItem;
    clusterResourceGroup: ResourceGroupItem;
    cluster: ManagedClusterItem;
@@ -52,7 +54,10 @@ type IExecuteStep = AzureWizardExecuteStep<WizardContext>;
 
 export async function runDraftWorkflow(
    {actionContext,extensionContext,}: Context, 
-   completedSteps: CompletedSteps) {
+   completedSteps: CompletedSteps
+   ) {
+   const state: StateApi = State.construct(extensionContext);
+
    const az: AzApi = new Az(getAzCreds);
 
    // Ensure Draft Binary
@@ -97,7 +102,8 @@ export async function runDraftWorkflow(
    ];
    const executeSteps: IExecuteStep[] = [
       new ExecuteDraftWorkflow(),
-      new ExecuteOpenWorkflowFile()
+      new ExecuteOpenWorkflowFile(),
+      new ExecuteSaveState(state, completedSteps)
    ];
 
    const wizardContext: WizardContext = {
@@ -144,16 +150,59 @@ class PromptManifestFile extends AzureWizardPromptStep<WizardContext> {
             stepName: 'Manifest File',
             openLabel: 'Choose Manifest File',
             title: 'Choose Manifest File',
-            defaultUri: wizardContext.manifestFile
+            defaultUri: wizardContext.manifestPath
          })
       )[0];
       
-      wizardContext.manifestFile = manifestFile;
+      wizardContext.manifestPath = manifestFile;
    }
 
    public shouldPrompt(wizardContext: WizardContext): boolean {
       return !this.completedSteps.draftDeployment;
    }
+}
+
+class ExecuteSaveState extends AzureWizardExecuteStep<WizardContext> {
+   public priority: number = 3;
+
+   constructor(private state: StateApi, private completedSteps: CompletedSteps) {
+      super();
+   }
+
+   public async execute(
+      wizardContext: WizardContext,
+      progress: vscode.Progress<{
+         message?: string | undefined;
+         increment?: number | undefined;
+      }>
+   ): Promise<void> {
+      const {manifestPath} = wizardContext;
+      if (manifestPath !== undefined) {
+         this.state.setDeploymentPath(manifestPath.path);
+      }
+
+      const manifestFilePath = getManifestFilePath(wizardContext);
+      this.state.setDeploymentPath(manifestFilePath);
+      this.state.setDeploymentFormat(getManifestFileFormat(manifestFilePath));
+   }
+
+   public shouldExecute(wizardContext: WizardContext): boolean {
+      return !this.completedSteps.draftDeployment;
+   }
+}
+
+function getManifestFilePath(wizardContext: WizardContext): string {
+   const manifestFilePath = wizardContext.manifestPath?.path;
+   if (manifestFilePath === undefined) {
+      throw Error('Manifest folder is undefined');
+   }
+
+   return path.join(manifestFilePath, 'Dockerfile');
+}
+
+// TODO: Create function that returns manifest file format. Placeholder in atm
+function getManifestFileFormat(manifestFilePath: string): string {
+   return "YAML";
 }
 
 class PromptAKSClusterSelection extends AzureWizardPromptStep<WizardContext> {
