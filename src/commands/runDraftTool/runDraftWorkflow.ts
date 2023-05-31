@@ -98,7 +98,7 @@ export async function runDraftWorkflow(
       new PromptACRRegistrySelection(az),
       new PromptNewRepository(),
       new PromptGitHubBranchSelection(),     
-      new PromptManifestFile(completedSteps),
+      new PromptManifestFolder(completedSteps),
    ];
    const executeSteps: IExecuteStep[] = [
       new ExecuteDraftWorkflow(),
@@ -137,7 +137,7 @@ export async function runDraftWorkflow(
 }
 
 
-class PromptManifestFile extends AzureWizardPromptStep<WizardContext> {
+class PromptManifestFolder extends AzureWizardPromptStep<WizardContext> {
    constructor(private completedSteps: CompletedSteps) {
       super();
    }
@@ -158,35 +158,6 @@ class PromptManifestFile extends AzureWizardPromptStep<WizardContext> {
    }
 
    public shouldPrompt(wizardContext: WizardContext): boolean {
-      return !this.completedSteps.draftDeployment;
-   }
-}
-
-class ExecuteSaveState extends AzureWizardExecuteStep<WizardContext> {
-   public priority: number = 3;
-
-   constructor(private state: StateApi, private completedSteps: CompletedSteps) {
-      super();
-   }
-
-   public async execute(
-      wizardContext: WizardContext,
-      progress: vscode.Progress<{
-         message?: string | undefined;
-         increment?: number | undefined;
-      }>
-   ): Promise<void> {
-      const {manifestPath} = wizardContext;
-      if (manifestPath !== undefined) {
-         this.state.setDeploymentPath(manifestPath.path);
-      }
-
-      const manifestFilePath = getManifestFilePath(wizardContext);
-      this.state.setDeploymentPath(manifestFilePath);
-      this.state.setDeploymentFormat(getManifestFileFormat(manifestFilePath));
-   }
-
-   public shouldExecute(wizardContext: WizardContext): boolean {
       return !this.completedSteps.draftDeployment;
    }
 }
@@ -527,6 +498,35 @@ class ExecuteOpenWorkflowFile extends AzureWizardExecuteStep<WizardContext> {
 
    public shouldExecute(wizardContext: WizardContext): boolean {
       return true;
+   }
+}
+
+class ExecuteSaveState extends AzureWizardExecuteStep<WizardContext> {
+   public priority: number = 4;
+
+   constructor(private state: StateApi, private completedSteps: CompletedSteps) {
+      super();
+   }
+
+   public async execute(
+      wizardContext: WizardContext,
+      progress: vscode.Progress<{
+         message?: string | undefined;
+         increment?: number | undefined;
+      }>
+   ): Promise<void> {
+      const {manifestPath} = wizardContext;
+      if (manifestPath !== undefined) {
+         this.state.setDeploymentPath(manifestPath.path);
+      }
+
+      const manifestFilePath = getManifestFilePath(wizardContext);
+      this.state.setDeploymentPath(manifestFilePath);
+      this.state.setDeploymentFormat(getManifestFileFormat(manifestFilePath));
+   }
+
+   public shouldExecute(wizardContext: WizardContext): boolean {
+      return !this.completedSteps.draftDeployment;
    }
 }
 
